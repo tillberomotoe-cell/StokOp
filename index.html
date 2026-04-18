@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Stock Gudang</title>
+
+<style>
+*{box-sizing:border-box;font-family:Inter,Arial}
+body{margin:0;background:#f6f8fb;color:#1e293b}
+
+header{
+background:#0f172a;
+color:#fff;
+padding:16px;
+text-align:center;
+font-size:18px;
+font-weight:600;
+}
+
+.menu{
+display:flex;
+background:#fff;
+border-bottom:1px solid #e5e7eb;
+}
+.menu button{
+flex:1;
+padding:14px;
+border:none;
+background:none;
+font-weight:600;
+cursor:pointer;
+color:#64748b;
+}
+.menu button.active{
+color:#22c55e;
+border-bottom:3px solid #22c55e;
+}
+
+.container{padding:20px;max-width:900px;margin:auto}
+
+.card{
+background:#fff;
+border-radius:14px;
+padding:18px;
+margin-bottom:18px;
+box-shadow:0 4px 14px rgba(0,0,0,0.05);
+}
+
+input{
+width:100%;
+padding:12px;
+margin:6px 0;
+border-radius:10px;
+border:1px solid #e5e7eb;
+}
+
+button{
+border:none;
+padding:12px;
+border-radius:10px;
+font-weight:600;
+cursor:pointer;
+}
+
+.btn-primary{background:#22c55e;color:#fff;}
+.btn-secondary{background:#0f172a;color:#fff;}
+
+table{
+width:100%;
+border-collapse:collapse;
+margin-top:10px;
+font-size:14px;
+}
+
+th{
+background:#f1f5f9;
+padding:10px;
+text-align:center;
+}
+
+td{
+padding:10px;
+border-bottom:1px solid #e5e7eb;
+text-align:center;
+}
+
+/* ===== DASHBOARD COLOR SYSTEM ===== */
+.group-odd td{ background:#f8fafc; }
+.group-even td{ background:#ffffff; }
+
+.var-row td{ background:#f1f5f9; }
+
+.nama-barang{
+background:#e2e8f0 !important;
+border-left:4px solid #22c55e;
+font-weight:600;
+}
+
+/* hover */
+table tr:hover{
+background:#f9fafb;
+}
+
+.suggest{
+border:1px solid #e5e7eb;
+border-radius:10px;
+max-height:150px;
+overflow:auto;
+background:#fff;
+}
+.suggest div{
+padding:10px;
+cursor:pointer;
+}
+.suggest div:hover{
+background:#f1f5f9;
+}
+</style>
+</head>
+
+<body>
+
+<header>📦 Stock Gudang</header>
+
+<div class="menu">
+<button onclick="tab(event,'dash')" class="active">Dashboard</button>
+<button onclick="tab(event,'in')">Barang Masuk</button>
+<button onclick="tab(event,'out')">Barang Keluar</button>
+<button onclick="tab(event,'master')">Master</button>
+</div>
+
+<div class="container">
+
+<!-- DASH -->
+<div id="dash" class="t">
+<div class="card">
+<button class="btn-secondary" onclick="exportCSV()">📥 Export Stock</button>
+</div>
+<div id="dashContent"></div>
+</div>
+
+<!-- IN -->
+<div id="in" class="t" style="display:none">
+<div class="card">
+<input id="inNama" placeholder="Cari kode / nama barang" oninput="cariBarang('in')">
+<div id="suggestIn" class="suggest"></div>
+
+<div id="tableVariasiIn"></div>
+
+<button class="btn-primary" onclick="tambahList('in')">+ Tambah</button>
+<button class="btn-secondary" onclick="submitData('in')">✔ Submit</button>
+</div>
+<div id="listIn"></div>
+</div>
+
+<!-- OUT -->
+<div id="out" class="t" style="display:none">
+<div class="card">
+<input id="outNama" placeholder="Cari kode / nama barang" oninput="cariBarang('out')">
+<div id="suggestOut" class="suggest"></div>
+
+<div id="tableVariasiOut"></div>
+
+<button class="btn-primary" onclick="tambahList('out')">+ Tambah</button>
+<button class="btn-secondary" onclick="submitData('out')">✔ Submit</button>
+</div>
+<div id="listOut"></div>
+</div>
+
+<!-- MASTER -->
+<div id="master" class="t" style="display:none">
+<div class="card">
+<input type="file" id="fileInput">
+<button class="btn-primary" onclick="uploadCSV()">Upload CSV</button>
+</div>
+<div id="tableMaster"></div>
+</div>
+
+</div>
+
+<script>
+
+let master = JSON.parse(localStorage.getItem("master")) || [];
+let trxIn = JSON.parse(localStorage.getItem("trxIn")) || [];
+let trxOut = JSON.parse(localStorage.getItem("trxOut")) || [];
+
+const saveMaster=()=>localStorage.setItem("master",JSON.stringify(master));
+const saveTrx=()=>{
+localStorage.setItem("trxIn",JSON.stringify(trxIn));
+localStorage.setItem("trxOut",JSON.stringify(trxOut));
+};
+
+function hitungStok(nama,variasi,gudang){
+let awal = master.find(m=>m.nama==nama && m.variasi==variasi && m.gudang==gudang)?.awal || 0;
+let totalIn = trxIn.filter(x=>x.nama==nama && x.variasi==variasi && x.gudang==gudang).reduce((a,b)=>a+b.qty,0);
+let totalOut = trxOut.filter(x=>x.nama==nama && x.variasi==variasi && x.gudang==gudang).reduce((a,b)=>a+b.qty,0);
+return awal + totalIn - totalOut;
+}
+
+function cariBarang(type){
+let keyword=document.getElementById(type+"Nama").value.toLowerCase();
+let unik=[...new Set(master.map(m=>m.kode+" - "+m.nama))];
+let hasil=unik.filter(n=>n.toLowerCase().includes(keyword));
+
+let html="";
+hasil.forEach(n=>{
+html+=`<div onclick="pilihBarang('${type}','${n}')">${n}</div>`;
+});
+document.getElementById("suggest"+capitalize(type)).innerHTML=html;
+}
+
+function pilihBarang(type,text){
+document.getElementById(type+"Nama").value=text;
+document.getElementById("suggest"+capitalize(type)).innerHTML="";
+let nama=text.split(" - ")[1];
+buatTableVariasi(type,nama);
+}
+
+function buatTableVariasi(type,nama){
+let list=master.filter(m=>m.nama==nama);
+
+let html="<table><tr><th>Gudang</th><th>Varian</th><th>Qty</th></tr>";
+list.forEach((m,i)=>{
+html+=`<tr>
+<td>${m.gudang}</td>
+<td>${m.variasi}</td>
+<td><input type="number" id="${type}Qty${i}" min="0"></td>
+</tr>`;
+});
+html+="</table>";
+
+document.getElementById("tableVariasi"+capitalize(type)).innerHTML=html;
+}
+
+let tempIn=[], tempOut=[];
+
+function tambahList(t){
+let text=document.getElementById(t+"Nama").value;
+if(!text) return alert("Pilih barang dulu");
+
+let nama=text.split(" - ")[1];
+let list=master.filter(m=>m.nama==nama);
+let temp=(t=="in")?tempIn:tempOut;
+
+list.forEach((m,i)=>{
+let qty=+document.getElementById(t+"Qty"+i).value;
+if(qty>0){
+temp.push({...m,qty});
+}
+});
+
+renderList(t);
+
+document.getElementById(t+"Nama").value="";
+document.getElementById("suggest"+capitalize(t)).innerHTML="";
+document.getElementById("tableVariasi"+capitalize(t)).innerHTML="";
+}
+
+function renderList(t){
+let temp=(t=="in")?tempIn:tempOut;
+let el=document.getElementById("list"+capitalize(t));
+
+let html="<table><tr><th>Barang</th><th>Varian</th><th>Gudang</th><th>Qty</th></tr>";
+temp.forEach(i=>{
+html+=`<tr>
+<td>${i.nama}</td>
+<td>${i.variasi}</td>
+<td>${i.gudang}</td>
+<td>${i.qty}</td>
+</tr>`;
+});
+html+="</table>";
+
+el.innerHTML=html;
+}
+
+function submitData(t){
+let temp=(t=="in")?tempIn:tempOut;
+if(temp.length==0) return alert("Tidak ada data");
+
+temp.forEach(item=>{
+if(t=="in") trxIn.push(item);
+else trxOut.push(item);
+});
+
+saveTrx();
+if(t=="in") tempIn=[]; else tempOut=[];
+
+document.getElementById("list"+capitalize(t)).innerHTML="";
+document.getElementById("tableVariasi"+capitalize(t)).innerHTML="";
+document.getElementById(t+"Nama").value="";
+document.getElementById("suggest"+capitalize(t)).innerHTML="";
+
+render();
+}
+
+function uploadCSV(){
+let file=fileInput.files[0];
+if(!file) return alert("Pilih file");
+
+let reader=new FileReader();
+reader.onload=function(e){
+let rows=e.target.result.split("\n");
+master=[];
+
+rows.slice(1).forEach(r=>{
+let [kode,nama,variasi,gudang,awal]=r.split(",");
+if(kode){
+master.push({kode,nama,variasi,gudang,awal:+awal||0});
+}
+});
+
+saveMaster();
+render();
+};
+reader.readAsText(file);
+}
+
+function exportCSV(){
+let d=new Date();
+let t=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+let csv="kode,nama,variasi,gudang,stok_awal,stok_sekarang\n";
+master.forEach(m=>{
+let stok=hitungStok(m.nama,m.variasi,m.gudang);
+csv+=`${m.kode},${m.nama},${m.variasi},${m.gudang},${m.awal},${stok}\n`;
+});
+
+let blob=new Blob([csv]);
+let a=document.createElement("a");
+a.href=URL.createObjectURL(blob);
+a.download=`Stock Opname - ${t}.csv`;
+a.click();
+}
+
+// DASHBOARD COLOR GROUP
+function render(){
+let dash="";
+let gudangs=[...new Set(master.map(m=>m.gudang))];
+
+gudangs.forEach(g=>{
+dash+=`<div class="card">
+<h3>📍 Gudang ${g}</h3>
+
+<table>
+<tr>
+<th style="text-align:left;">Barang</th>
+<th style="text-align:left;">Variasi</th>
+<th>Stok</th>
+</tr>
+`;
+
+let group={};
+master.filter(m=>m.gudang==g).forEach(m=>{
+if(!group[m.nama]) group[m.nama]=[];
+group[m.nama].push(m);
+});
+
+let iGroup=0;
+
+Object.keys(group).forEach(nama=>{
+let list = group[nama];
+let groupClass = iGroup % 2 == 0 ? "group-even" : "group-odd";
+
+list.forEach((v,i)=>{
+dash+=`<tr class="${groupClass} ${i>0?'var-row':''}">`;
+
+if(i==0){
+dash+=`
+<td rowspan="${list.length}" 
+class="nama-barang"
+style="text-align:left;vertical-align:middle;">
+${nama}
+</td>`;
+}
+
+dash+=`
+<td style="text-align:left;">
+${v.variasi}
+</td>
+
+<td style="font-weight:600;">
+${hitungStok(v.nama,v.variasi,v.gudang)}
+</td>
+</tr>`;
+});
+
+dash+=`<tr><td colspan="3" style="height:6px"></td></tr>`;
+iGroup++;
+});
+
+dash+=`</table></div>`;
+});
+
+document.getElementById("dashContent").innerHTML=dash;
+}
+
+function tab(e,id){
+document.querySelectorAll(".t").forEach(x=>x.style.display="none");
+document.getElementById(id).style.display="block";
+document.querySelectorAll(".menu button").forEach(b=>b.classList.remove("active"));
+e.target.classList.add("active");
+render();
+}
+
+function capitalize(s){return s.charAt(0).toUpperCase()+s.slice(1);}
+
+render();
+
+</script>
+
+</body>
+</html>
