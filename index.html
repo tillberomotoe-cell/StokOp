@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stock Gudang</title>
+
+<style>
+*{box-sizing:border-box;font-family:Inter,Arial}
+body{margin:0;background:#f6f8fb;color:#1e293b}
+
+header{background:#0f172a;color:#fff;padding:16px;text-align:center;font-weight:600}
+
+.menu{display:flex;background:#fff;border-bottom:1px solid #e5e7eb}
+.menu button{flex:1;padding:14px;border:none;background:none;font-weight:600;cursor:pointer;color:#64748b}
+.menu button.active{color:#22c55e;border-bottom:3px solid #22c55e}
+
+.container{padding:15px;max-width:1000px;margin:auto}
+.card{background:#fff;border-radius:12px;padding:16px;margin-bottom:16px}
+
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px;border-bottom:1px solid #e5e7eb}
+
+.col-nama{width:50%}
+.col-var{width:30%}
+.col-stok{width:20%;text-align:right}
+
+.inout th:nth-child(1){width:40%}
+.inout th:nth-child(2){width:20%}
+.inout th:nth-child(3){width:20%}
+.inout th:nth-child(4){width:20%}
+
+.stok{text-align:right;font-family:monospace;white-space:nowrap}
+.nama{background:#e2e8f0;border-left:4px solid #22c55e;font-weight:600;vertical-align:middle}
+.variasi{padding-left:16px;color:#475569}
+.separator td{border-bottom:2px solid #cbd5f5}
+
+.suggest{border:1px solid #ddd;border-radius:8px;max-height:120px;overflow:auto;margin-bottom:8px}
+.suggest div{padding:8px;cursor:pointer}
+.suggest div:hover{background:#f1f5f9}
+
+input{width:100%;padding:8px;margin-bottom:8px;border-radius:6px;border:1px solid #ddd}
+
+button{padding:10px;border:none;border-radius:6px;margin-top:5px;cursor:pointer}
+.btn{background:#22c55e;color:#fff}
+.btn2{background:#0f172a;color:#fff}
+</style>
+</head>
+
+<body>
+
+<header>📦 Stock Gudang</header>
+
+<div class="menu">
+<button onclick="tab(event,'dash')" class="active">Dashboard</button>
+<button onclick="tab(event,'in')">Barang Masuk</button>
+<button onclick="tab(event,'out')">Barang Keluar</button>
+<button onclick="tab(event,'rekap')">Rekap</button>
+</div>
+
+<div class="container">
+
+<!-- DASH -->
+<div id="dash" class="t">
+<div class="card">
+<input type="file" id="fileInput">
+<button class="btn" onclick="uploadCSV()">Upload</button>
+<button class="btn2" onclick="exportCSV()">Export</button>
+</div>
+<div id="dashContent"></div>
+</div>
+
+<!-- IN -->
+<div id="in" class="t" style="display:none">
+<div class="card">
+<input id="inNama" placeholder="Cari barang..." oninput="cariBarang('in')">
+<div id="suggestIn" class="suggest"></div>
+<div id="tableVariasiIn"></div>
+<button class="btn" onclick="tambahList('in')">Tambah</button>
+<button class="btn2" onclick="submitData('in')">Submit</button>
+</div>
+<div id="listIn"></div>
+</div>
+
+<!-- OUT -->
+<div id="out" class="t" style="display:none">
+<div class="card">
+<input id="outNama" placeholder="Cari barang..." oninput="cariBarang('out')">
+<div id="suggestOut" class="suggest"></div>
+<div id="tableVariasiOut"></div>
+<button class="btn" onclick="tambahList('out')">Tambah</button>
+<button class="btn2" onclick="submitData('out')">Submit</button>
+</div>
+<div id="listOut"></div>
+</div>
+
+<!-- REKAP -->
+<div id="rekap" class="t" style="display:none">
+<div class="card">
+<button class="btn2" onclick="exportRekapCSV()">Export Rekap</button>
+</div>
+<div id="rekapContent"></div>
+</div>
+
+</div>
+
+<script>
+
+let master=JSON.parse(localStorage.getItem("master"))||[];
+let trxIn=JSON.parse(localStorage.getItem("trxIn"))||[];
+let trxOut=JSON.parse(localStorage.getItem("trxOut"))||[];
+
+function save(){
+localStorage.setItem("master",JSON.stringify(master));
+localStorage.setItem("trxIn",JSON.stringify(trxIn));
+localStorage.setItem("trxOut",JSON.stringify(trxOut));
+}
+
+function hitung(n,v,g){
+let awal=master.find(m=>m.nama==n&&m.variasi==v&&m.gudang==g)?.awal||0;
+let i=trxIn.filter(x=>x.nama==n&&x.variasi==v&&x.gudang==g).reduce((a,b)=>a+b.qty,0);
+let o=trxOut.filter(x=>x.nama==n&&x.variasi==v&&x.gudang==g).reduce((a,b)=>a+b.qty,0);
+return awal+i-o;
+}
+
+/* DASH */
+function renderDash(){
+let html="";
+let gudang=[...new Set(master.map(m=>m.gudang))];
+
+gudang.forEach(g=>{
+html+=`<div class="card"><b>Gudang ${g}</b>
+<table>
+<tr>
+<th class="col-nama">Barang</th>
+<th class="col-var">Variasi</th>
+<th class="col-stok">Stock</th>
+</tr>`;
+
+let data=master.filter(m=>m.gudang==g)
+.sort((a,b)=>a.nama.localeCompare(b.nama)||a.variasi.localeCompare(b.variasi));
+
+let group={};
+data.forEach(m=>{
+if(!group[m.nama]) group[m.nama]=[];
+group[m.nama].push(m);
+});
+
+Object.keys(group).forEach(n=>{
+let list=group[n];
+list.forEach((v,i)=>{
+html+=`<tr>`;
+if(i==0) html+=`<td rowspan="${list.length}" class="nama">${n}</td>`;
+html+=`
+<td class="variasi">${v.variasi}</td>
+<td class="stok">${hitung(v.nama,v.variasi,v.gudang)}</td>
+</tr>`;
+});
+html+=`<tr class="separator"><td colspan="3"></td></tr>`;
+});
+
+html+="</table></div>";
+});
+
+dashContent.innerHTML=html;
+}
+
+/* REKAP */
+function renderRekap(){
+let html="";
+let gudang=[...new Set(master.map(m=>m.gudang))];
+
+gudang.forEach(g=>{
+html+=`<div class="card"><b>Gudang ${g}</b>
+<table>
+<tr>
+<th>Barang</th><th>Variasi</th><th>System</th><th>Real</th>
+</tr>`;
+
+let data=master.filter(m=>m.gudang==g)
+.sort((a,b)=>a.nama.localeCompare(b.nama)||a.variasi.localeCompare(b.variasi));
+
+let group={};
+data.forEach(m=>{
+if(!group[m.nama]) group[m.nama]=[];
+group[m.nama].push(m);
+});
+
+Object.keys(group).forEach(n=>{
+let list=group[n];
+list.forEach((v,i)=>{
+let id=`real-${g}-${v.nama}-${v.variasi}`;
+html+=`<tr>`;
+if(i==0) html+=`<td rowspan="${list.length}" class="nama">${n}</td>`;
+html+=`
+<td class="variasi">${v.variasi}</td>
+<td class="stok">${hitung(v.nama,v.variasi,v.gudang)}</td>
+<td><input type="number" id="${id}"></td>
+</tr>`;
+});
+html+=`<tr class="separator"><td colspan="4"></td></tr>`;
+});
+
+html+="</table></div>";
+});
+
+rekapContent.innerHTML=html;
+}
+
+/* FIX EXPORT DASH */
+function exportCSV(){
+let d=new Date();
+let csv="kode,nama,variasi,gudang,stok\n";
+
+master.forEach(m=>{
+csv+=`${m.kode},${m.nama},${m.variasi},${m.gudang},${hitung(m.nama,m.variasi,m.gudang)}\n`;
+});
+
+let blob=new Blob([csv],{type:"text/csv"});
+let url=URL.createObjectURL(blob);
+
+let a=document.createElement("a");
+a.href=url;
+a.download=`Stock Opname ${d.toISOString().slice(0,10)}.csv`;
+a.click();
+
+URL.revokeObjectURL(url);
+}
+
+/* FIX UPLOAD */
+function uploadCSV(){
+let f=fileInput.files[0];
+if(!f) return alert("Pilih file dulu");
+
+let r=new FileReader();
+r.onload=e=>{
+master=[];
+e.target.result.split("\n").slice(1).forEach(l=>{
+let[k,n,v,g,a]=l.split(",");
+if(k) master.push({kode:k,nama:n,variasi:v,gudang:g,awal:+a||0});
+});
+
+save();
+render();
+
+/* RESET INPUT AGAR BISA UPLOAD LAGI */
+fileInput.value="";
+};
+
+r.readAsText(f);
+}
+
+/* EXPORT REKAP */
+function exportRekapCSV(){
+let csv="gudang,nama,variasi,system,real\n";
+
+master.forEach(m=>{
+let system=hitung(m.nama,m.variasi,m.gudang);
+let id=`real-${m.gudang}-${m.nama}-${m.variasi}`;
+let real=document.getElementById(id)?.value||0;
+
+csv+=`${m.gudang},${m.nama},${m.variasi},${system},${real}\n`;
+});
+
+let d=new Date();
+let blob=new Blob([csv],{type:"text/csv"});
+let url=URL.createObjectURL(blob);
+
+let a=document.createElement("a");
+a.href=url;
+a.download=`Rekap Stock ${d.toISOString().slice(0,10)}.csv`;
+a.click();
+
+URL.revokeObjectURL(url);
+}
+
+/* FUNCTION LAIN TETAP */
+function cariBarang(t){
+let val=document.getElementById(t+"Nama").value.toLowerCase();
+let list=[...new Set(master.map(m=>m.kode+" - "+m.nama))]
+.filter(x=>x.toLowerCase().includes(val));
+
+let html="";
+list.forEach(x=>{
+html+=`<div onclick="pilihBarang('${t}','${x}')">${x}</div>`;
+});
+document.getElementById("suggest"+capitalize(t)).innerHTML=html;
+}
+
+function pilihBarang(t,txt){
+document.getElementById(t+"Nama").value=txt;
+document.getElementById("suggest"+capitalize(t)).innerHTML="";
+buatTableVariasi(t,txt.split(" - ")[1]);
+}
+
+function buatTableVariasi(t,nama){
+let list=master.filter(m=>m.nama==nama);
+
+let html="<table class='inout'><tr><th>Gudang</th><th>Variasi</th><th>Qty</th></tr>";
+
+list.forEach((m,i)=>{
+html+=`<tr>
+<td>${m.gudang}</td>
+<td>${m.variasi}</td>
+<td><input type="number" id="${t}Qty${i}"></td>
+</tr>`;
+});
+
+html+="</table>";
+document.getElementById("tableVariasi"+capitalize(t)).innerHTML=html;
+}
+
+let tempIn=[],tempOut=[];
+
+function tambahList(t){
+let text=document.getElementById(t+"Nama").value;
+if(!text) return alert("Pilih barang");
+
+let nama=text.split(" - ")[1];
+let list=master.filter(m=>m.nama==nama);
+let temp=t=="in"?tempIn:tempOut;
+
+let valid=false;
+
+list.forEach((m,i)=>{
+let qty=+document.getElementById(t+"Qty"+i).value||0;
+if(qty>0){
+temp.push({...m,qty});
+valid=true;
+}
+});
+
+if(!valid) return alert("Isi qty");
+
+renderList(t);
+
+document.getElementById(t+"Nama").value="";
+document.getElementById("tableVariasi"+capitalize(t)).innerHTML="";
+}
+
+function renderList(t){
+let temp=t=="in"?tempIn:tempOut;
+let el=document.getElementById("list"+capitalize(t));
+
+let html="<table class='inout'><tr><th>Barang</th><th>Variasi</th><th>Gudang</th><th>Qty</th></tr>";
+
+temp.forEach(i=>{
+html+=`<tr>
+<td>${i.nama}</td>
+<td>${i.variasi}</td>
+<td>${i.gudang}</td>
+<td class="stok">${i.qty}</td>
+</tr>`;
+});
+
+html+="</table>";
+el.innerHTML=html;
+}
+
+function submitData(t){
+let temp=t=="in"?tempIn:tempOut;
+if(temp.length==0) return alert("Kosong");
+
+temp.forEach(x=>t=="in"?trxIn.push(x):trxOut.push(x));
+save();
+
+if(t=="in") tempIn=[]; else tempOut=[];
+
+document.getElementById("list"+capitalize(t)).innerHTML="";
+render();
+}
+
+function tab(e,id){
+document.querySelectorAll(".t").forEach(x=>x.style.display="none");
+document.getElementById(id).style.display="block";
+document.querySelectorAll(".menu button").forEach(b=>b.classList.remove("active"));
+e.target.classList.add("active");
+render();
+}
+
+function capitalize(s){return s.charAt(0).toUpperCase()+s.slice(1)}
+
+function render(){
+renderDash();
+renderRekap();
+}
+
+render();
+
+</script>
+
+</body>
+</html>
